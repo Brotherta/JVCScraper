@@ -6,13 +6,11 @@ import urllib
 import pandas as pd
 from requests_html import HTML
 from requests_html import HTMLSession
-import re
 
-proxyhttp = "http://68.188.59.198:80"
-
-proxy = {
-    "https" : proxyhttp
-}
+DEBUG = True
+FILEPATH_SCRAP = "scraps/all_avis.csv"
+JVC_URL = "https://www.jeuxvideo.com/jeux/"
+GOOGLE_URL = "https://www.google.com/search?channel=crow5&client=firefox-b-d&q=jeuxvideo.com+"
 
 def scrape_google(query):
 
@@ -46,21 +44,22 @@ def get_source(url):
         print(e)
 
 
-def get_blocs(soup : BeautifulSoup):
-
+def get_blocs_avis(soup : BeautifulSoup):
     bloc_avis_tous = soup.find('div', class_='bloc-avis-tous')
-
     return bloc_avis_tous.find_all('div', class_='bloc-avis')
 
-DEBUG = True
+
+
+
 
 if __name__ == "__main__":
     game = ""
-    URL = "https://www.google.com/search?channel=crow5&client=firefox-b-d&q=jeuxvideo.com+"
-
     html =""
     soup: BeautifulSoup
+
+
     if not DEBUG:
+    
         while game == "":
             game = input("Search for a game : (ex: World of Warcraft)\n")
             links = scrape_google('jeuxvideo.com ' + game + ' avis')
@@ -68,7 +67,7 @@ if __name__ == "__main__":
             links_game = []
             for link in links:
                 link: str
-                if link.startswith('https://www.jeuxvideo.com/jeux/') and 'avis' in link:
+                if link.startswith(JVC_URL) and 'avis' in link:
                     links_game.append(link)
 
             if len(links_game) == 0:
@@ -77,6 +76,7 @@ if __name__ == "__main__":
         
         games_dict = {}
         games_dict_index = {}
+
         index = 0
         for link in links_game:
             req = requests.get(link).text
@@ -98,8 +98,10 @@ if __name__ == "__main__":
             choice = int(input("Choose a game : (ex: 0) enter -1 for scrappes all\n"))
         
         url = games_dict[games_dict_index[choice]]
+
     else:
         url = "https://www.jeuxvideo.com/jeux/pc/jeu-11212/avis/"
+        game = "test"
 
     
     print("url : ", url)
@@ -113,46 +115,36 @@ if __name__ == "__main__":
         nb_pages = int(pages[len(pages)-1].text)
     
     
-    data = {}
-
-    json_object = None
+    data: pd.DataFrame
     try:
-        with open("scraps/avis_all.json", 'r') as file:
-            data = json.load(file)
-            file.close()
-    except:
-        data = {}
+        data = pd.read_csv("scraps/all_avis.csv", na_values=('NaN', 'NA', ''), index_col=0)
+    except FileNotFoundError as e:
+        data = pd.DataFrame(data={'jeux': [], 'note': [], 'avis': []})
     
     
     for i in trange(1,nb_pages+1):
         html = requests.get(f'{url}?p={i}').text
         soup = BeautifulSoup(html, 'html.parser') 
 
-        blocs = get_blocs(soup)
+        blocs = get_blocs_avis(soup)
 
         bloc: BeautifulSoup
         for bloc in blocs:
             note = bloc.find('div', class_='note-avis').find('strong').text
             avis = bloc.find('p').text
             avis = avis
-
-            data.append({
-                note : avis,
-                "nom" : game
-            })
+            new_row = {'jeux': game, 'note': note, 'avis': avis}
+            data = data.append(new_row, ignore_index=True)
+            
             
     nb_avis = len(data)
-    data["nb_avis"] = nb_avis
     print(nb_avis, "advices has been scrapped.")
 
-    filename = "avis_all.json"
+    filename = FILEPATH_SCRAP
 
-    json_file = json.dumps(data, ensure_ascii=False, indent=4)
-    
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write(json_file)
-        f.close()
-        print(f'results are saved game as {filename} into scraps directory')
+    data.to_csv(FILEPATH_SCRAP)
+    print(f'results are saved game in {filename}')
+
 
         
     
