@@ -1,8 +1,12 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-import sys
 from tqdm import trange
+import urllib
+import pandas as pd
+from requests_html import HTML
+from requests_html import HTMLSession
+import re
 
 proxyhttp = "http://68.188.59.198:80"
 
@@ -10,63 +14,146 @@ proxy = {
     "https" : proxyhttp
 }
 
+def scrape_google(query):
+
+    query = urllib.parse.quote_plus(query)
+    response = get_source("https://www.google.co.uk/search?q=" + query)
+
+    links = list(response.html.absolute_links)
+    google_domains = ('https://www.google.', 
+                      'https://google.', 
+                      'https://webcache.googleusercontent.', 
+                      'http://webcache.googleusercontent.', 
+                      'https://policies.google.',
+                      'https://support.google.',
+                      'https://maps.google.')
+
+    for url in links[:]:
+        if url.startswith(google_domains):
+            links.remove(url)
+
+    return links
+
+
+def get_source(url):
+
+    try:
+        session = HTMLSession()
+        response = session.get(url)
+        return response
+
+    except requests.exceptions.RequestException as e:
+        print(e)
+
+
 def get_blocs(soup : BeautifulSoup):
-    blocs = []
-    all = soup.find_all('div', class_='bloc-avis-tous')
 
-    for bloc in all:
-        blocs.append(bloc.find('div', class_='bloc-avis'))    
+    bloc_avis_tous = soup.find('div', class_='bloc-avis-tous')
 
-    return blocs
+    return bloc_avis_tous.find_all('div', class_='bloc-avis')
 
-
-def main():
-
-    for i in range(1,301):
-        url = f'https://www.jeuxvideo.com/jeux/pc/jeu-38024/avis/?p={i}'
-        print("\n\n\n\n\n\n\n\n\n\n\nrequete numéro :", i)
-        print(requests.get(url).text)
-        
-
+DEBUG = True
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    
-    if len(args) != 2:
-        print("Usage: [game name] [jvc url avis]")
-        exit(1)
-    
-    game = args[0]
-    url = args[1]
+    game = ""
+    URL = "https://www.google.com/search?channel=crow5&client=firefox-b-d&q=jeuxvideo.com+"
 
+    html =""
+    soup: BeautifulSoup
+    if not DEBUG:
+        while game == "":
+            game = input("Search for a game : (ex: World of Warcraft)\n")
+            links = scrape_google('jeuxvideo.com ' + game + ' avis')
+
+            links_game = []
+            for link in links:
+                link: str
+                if link.startswith('https://www.jeuxvideo.com/jeux/') and 'avis' in link:
+                    links_game.append(link)
+
+            if len(links_game) == 0:
+                print("The game searched does not exist. Please retry.")
+                game = ""
+        
+        games_dict = {}
+        games_dict_index = {}
+        index = 0
+        for link in links_game:
+            req = requests.get(link).text
+            soup = BeautifulSoup(req, 'html.parser')
+            title = soup.find('title').text
+            games_dict[title] = link
+            games_dict_index[index] = title
+            index+=1
+
+
+        choices = "Games availables"
+        for i in range(index-1):
+            choices += f'\n - ({i}) {games_dict_index[i]}'
+
+        choice = -2
+        while choice == -2:
+            print(choices)
+            print("\n")
+            choice = int(input("Choose a game : (ex: 0) enter -1 for scrappes all\n"))
+        
+        url = games_dict[games_dict_index[choice]]
+    else:
+        url = "https://www.jeuxvideo.com/jeux/pc/jeu-11212/avis/"
+
+    
+    print("url : ", url)
     html = requests.get(url).text
-    soup = BeautifulSoup(html, 'html.parser')  
+    soup = BeautifulSoup(html, 'html.parser')
 
     pages = soup.find_all('a', class_='lien-jv')
+
+    nb_pages = 1
+    if len(pages) != 0:
+        nb_pages = int(pages[len(pages)-1].text)
     
-    if (len(pages) <= 0):
-        print("Url is not correct, ensure to give url from avis. ex: https://www.jeuxvideo.com/jeux/pc/jeu-XXXX/avis/")
-        exit(1)
-
-    nb_pages = int(pages[len(pages)-1].text)
     
-    blocs = get_blocs(soup);
+    data = {}
 
-    data = []
-
-
-    for i in trange(1,nb_pages):
+    json_object = None
+    try:
+        with open("scraps/avis_all.json", 'r') as file:
+            data = json.load(file)
+            file.close()
+    except:
+        data = {}
+    
+    
+    for i in trange(1,nb_pages+1):
         html = requests.get(f'{url}?p={i}').text
         soup = BeautifulSoup(html, 'html.parser') 
+
+        blocs = get_blocs(soup)
 
         bloc: BeautifulSoup
         for bloc in blocs:
             note = bloc.find('div', class_='note-avis').find('strong').text
             avis = bloc.find('p').text
-       
-            data.append({note : avis})
+            avis = avis
 
-    print(json.dumps(data, indent=4, ensure_ascii=False))
+            data.append({
+                note : avis,
+                "nom" : game
+            })
+            
+    nb_avis = len(data)
+    data["nb_avis"] = nb_avis
+    print(nb_avis, "advices has been scrapped.")
+
+    filename = "avis_all.json"
+
+    json_file = json.dumps(data, ensure_ascii=False, indent=4)
+    
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(json_file)
+        f.close()
+        print(f'results are saved game as {filename} into scraps directory')
+
         
     
 
