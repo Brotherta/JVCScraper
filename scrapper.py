@@ -47,16 +47,12 @@ def get_source(url):
 
 
 def get_blocs(soup : BeautifulSoup):
-    blocs = []
-    all = soup.find_all('div', class_='bloc-avis-tous')
 
-    for bloc in all:
-        blocs.append(bloc.find('div', class_='bloc-avis'))    
+    bloc_avis_tous = soup.find('div', class_='bloc-avis-tous')
 
-    print("\n\nDEBUG bloc len :", len(blocs))
-    return blocs
+    return bloc_avis_tous.find_all('div', class_='bloc-avis')
 
-        
+DEBUG = True
 
 if __name__ == "__main__":
     game = ""
@@ -64,72 +60,100 @@ if __name__ == "__main__":
 
     html =""
     soup: BeautifulSoup
+    if not DEBUG:
+        while game == "":
+            game = input("Search for a game : (ex: World of Warcraft)\n")
+            links = scrape_google('jeuxvideo.com ' + game + ' avis')
 
-    while game == "":
-        game = input("Search for a game : (ex: World of Warcraft)\n")
-        links = scrape_google('jeuxvideo.com ' + game + ' avis')
+            links_game = []
+            for link in links:
+                link: str
+                if link.startswith('https://www.jeuxvideo.com/jeux/') and 'avis' in link:
+                    links_game.append(link)
 
-        links_game = []
-        for link in links:
-            link: str
-            if link.startswith('https://www.jeuxvideo.com/jeux/') and 'avis' in link:
-                links_game.append(link)
+            if len(links_game) == 0:
+                print("The game searched does not exist. Please retry.")
+                game = ""
+        
+        games_dict = {}
+        games_dict_index = {}
+        index = 0
+        for link in links_game:
+            req = requests.get(link).text
+            soup = BeautifulSoup(req, 'html.parser')
+            title = soup.find('title').text
+            games_dict[title] = link
+            games_dict_index[index] = title
+            index+=1
 
-        if len(links_game) == 0:
-            print("The game searched does not exist. Please retry.")
-            game = ""
+
+        choices = "Games availables"
+        for i in range(index-1):
+            choices += f'\n - ({i}) {games_dict_index[i]}'
+
+        choice = -2
+        while choice == -2:
+            print(choices)
+            print("\n")
+            choice = int(input("Choose a game : (ex: 0) enter -1 for scrappes all\n"))
+        
+        url = games_dict[games_dict_index[choice]]
+    else:
+        url = "https://www.jeuxvideo.com/jeux/pc/jeu-11212/avis/"
+
     
-    games_dict = {}
-    games_dict_index = {}
-    index = 0
-    for link in links_game:
-        req = requests.get(link).text
-        soup = BeautifulSoup(req, 'html.parser')
-        title = soup.find('title').text
-        games_dict[title] = link
-        games_dict_index[index] = title
-        index+=1
-
-
-    choices = "Games availables"
-    for i in range(index-1):
-        choices += f'\n - ({i}) {games_dict_index[i]}'
-
-    choice = -2
-    while choice == -2:
-        print(choices)
-        print("\n")
-        choice = int(input("Choose a game : (ex: 0) enter -1 for scrappes all\n"))
-    
-    url = games_dict[games_dict_index[choice]]
-    print(url)
+    print("url : ", url)
     html = requests.get(url).text
     soup = BeautifulSoup(html, 'html.parser')
 
     pages = soup.find_all('a', class_='lien-jv')
 
-    nb_pages = int(pages[len(pages)-1].text)
+    nb_pages = 1
+    if len(pages) != 0:
+        nb_pages = int(pages[len(pages)-1].text)
     
-    blocs = get_blocs(soup);
+    
+    data = {}
 
-    data = []
-
-    for i in trange(1,nb_pages):
+    json_object = None
+    try:
+        with open("scraps/avis_all.json", 'r') as file:
+            data = json.load(file)
+            file.close()
+    except:
+        data = {}
+    
+    
+    for i in trange(1,nb_pages+1):
         html = requests.get(f'{url}?p={i}').text
         soup = BeautifulSoup(html, 'html.parser') 
+
+        blocs = get_blocs(soup)
 
         bloc: BeautifulSoup
         for bloc in blocs:
             note = bloc.find('div', class_='note-avis').find('strong').text
             avis = bloc.find('p').text
-            print("note : ", note)
-            print("avis : ", avis)
-            data.append({note : avis})
-    
-    with open(f'scraps/{game}.json', 'w') as f:
-        json.dumps(data, indent=4, ensure_ascii=False)
+            avis = avis
 
-    print(f'{game}.json created in scraps folder.')
+            data.append({
+                note : avis,
+                "nom" : game
+            })
+            
+    nb_avis = len(data)
+    data["nb_avis"] = nb_avis
+    print(nb_avis, "advices has been scrapped.")
+
+    filename = "avis_all.json"
+
+    json_file = json.dumps(data, ensure_ascii=False, indent=4)
+    
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(json_file)
+        f.close()
+        print(f'results are saved game as {filename} into scraps directory')
+
         
     
 
