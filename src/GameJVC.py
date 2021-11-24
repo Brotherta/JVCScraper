@@ -1,9 +1,4 @@
-import requests
-from bs4 import BeautifulSoup
-from tqdm import trange
-import urllib
-import pandas as pd
-from requests_html import HTMLSession
+from src import *
 
 
 class GameJVC(object):
@@ -15,10 +10,8 @@ class GameJVC(object):
     
 
     def __init__(self) -> None:
-        self.game = ""
+        self.game_name = ""
         self.url = ""
         self.id = -1
         self.nb_avis = 0
         self.title_article = ""
-
-    
