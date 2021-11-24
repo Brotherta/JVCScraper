@@ -91,7 +91,7 @@ class ScraperJVC(object):
             links_game = []
             for link in links:
                 link: str
-                if link.startswith(JVC_URL) and 'avis' in link:
+                if link.startswith(JVC_URL) and 'avis' in link and "?p=" not in link:
                     links_game.append(link)
 
             if len(links_game) == 0:
